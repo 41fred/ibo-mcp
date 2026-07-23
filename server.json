@@ -1,0 +1,9 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.41fred/ibo",
+  "description": "Commission cinematic AI-native campaign films and image sets from IBO Studio. Browse packages, create a Stripe checkout for your user to approve, then complete the creative brief and upload brand assets.",
+  "version": "1.0.0",
+  "websiteUrl": "https://ibouniverse.com/agents",
+  "repository": { "url": "https://github.com/41fred/ibo-mcp", "source": "github" },
+  "remotes": [{ "type": "streamable-http", "url": "https://ibouniverse.com/mcp" }]
+}
