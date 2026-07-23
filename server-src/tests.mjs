@@ -387,6 +387,70 @@ test("rate limit: checkout throttles per IP, other IPs unaffected", async () => 
   assert.equal(other.status, 303, "different IP unaffected");
 });
 
+
+test("order tokens: expired, tampered, wrong-order, and raw session ids rejected", async () => {
+  const { createHmac } = await import("node:crypto");
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `ot-${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const SECRET = "test-order-secret";
+  const env = {
+    ASSETS: { fetch: async () => new Response("x", { status: 404 }) },
+    ORDER_TOKEN_SECRET: SECRET,
+    R2_ACCESS_KEY_ID: "k", R2_SECRET_ACCESS_KEY: "s",
+  };
+  const ctx = { waitUntil() {}, passThroughOnException() {} };
+  const mint = (sid, exp, secret = SECRET) => {
+    const payload = Buffer.from(JSON.stringify({ sid, exp })).toString("base64url");
+    const sig = createHmac("sha256", secret).update(payload).digest("hex");
+    return `ibo_${payload}.${sig}`;
+  };
+  const upload = (order_token) => worker.fetch(
+    new Request("http://localhost/api/brief/upload-url", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: "a.png", size: 10, order_token }),
+    }), env, ctx);
+
+  const past = Math.floor(Date.now() / 1000) - 60;
+  const future = Math.floor(Date.now() / 1000) + 3600;
+  assert.equal((await upload(mint("cs_live_x", past))).status, 403, "expired token rejected");
+  const tampered = mint("cs_live_x", future).slice(0, -4) + "0000";
+  assert.equal((await upload(tampered)).status, 403, "tampered token rejected");
+  assert.equal((await upload(mint("cs_live_x", future, "other-secret"))).status, 403, "foreign-secret token rejected");
+  // Raw Stripe session ids are not accepted by capability surfaces.
+  assert.equal((await upload("cs_live_abc123")).status, 403, "raw session id rejected at upload");
+  const brief = await worker.fetch(new Request("http://localhost/api/brief", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "T", email: "t@example.com", order_token: "cs_live_abc123",
+      files: [{ key: "briefs/aaaaaaaabbbbccccddddeeeeffff0000/aa.png", name: "a", size: 1 }] }),
+  }), { ...env, RESEND_API_KEY: "re_dummy" }, ctx);
+  // Session-id-as-token yields no verified order: submission stays anonymous
+  // (fail-open without Turnstile secret) and file refs are dropped.
+  assert.equal(brief.status, 200);
+});
+
+test("mcp: structuredContent keys conform to each outputSchema", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `sc-${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const env = { ASSETS: { fetch: async () => new Response("x", { status: 404 }) } };
+  const ctx = { waitUntil() {}, passThroughOnException() {} };
+  const rpc = (body) => worker.fetch(new Request("http://localhost/mcp", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }), env, ctx);
+  const tools = (await (await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list" })).json()).result.tools;
+  for (const t of tools) assert.ok(t.outputSchema && t.annotations, `${t.name} declares schema+annotations`);
+  const offers = (await (await rpc({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_offers", arguments: {} } })).json()).result;
+  const schema = tools.find((t) => t.name === "list_offers").outputSchema;
+  for (const key of Object.keys(offers.structuredContent)) {
+    assert.ok(key in schema.properties, `list_offers key ${key} declared in outputSchema`);
+  }
+  // files[] item validation is recursive.
+  const bad = (await (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "submit_brief", arguments: { order_token: "ibo_x.y", files: [{ key: "k", name: "n", size: 1, sneaky: true }] } } })).json()).result;
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /files\[0\]/);
+});
+
 test("thank-you page: renders and is noindexed", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `ty-${process.pid}-${Date.now()}`);

@@ -42,7 +42,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
-      properties: { studio: { type: "string" }, currency: { type: "string" }, policies: { type: "object" }, how_to_order: { type: "array" }, offers: { type: "array" } },
+      properties: { studio: { type: "string" }, url: { type: "string" }, currency: { type: "string" }, policies: { type: "object" }, how_to_order: { type: "array" }, offers: { type: "array" } },
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -58,7 +58,7 @@ const TOOLS: Tool[] = [
         package: { type: "string", enum: ["film", "series", "images"], description: "Offer id from list_offers" },
         client_request_id: { type: "string", description: "Stable id you generate; makes creation idempotent on retry" },
       },
-      required: ["package"],
+      required: ["package", "client_request_id"],
       additionalProperties: false,
     },
     outputSchema: {
@@ -75,7 +75,7 @@ const TOOLS: Tool[] = [
     name: "get_order",
     title: "Verify an order after checkout",
     description:
-      "Verify payment after checkout and receive an order-scoped access token. Returns paid, package, deposit, the customer's name/email, and order_token: use order_token for create_upload_url and submit_brief. Payment status can only be established here, never assumed.",
+      "Verify payment after checkout and receive an order-scoped access token. Returns paid, package, deposit, and order_token: use order_token for create_upload_url and submit_brief. Payment status can only be established here, never assumed.",
     inputSchema: {
       type: "object",
       properties: { session_id: { type: "string", description: "Stripe checkout session id (cs_...)" } },
@@ -86,7 +86,7 @@ const TOOLS: Tool[] = [
       type: "object",
       properties: {
         paid: { type: "boolean" }, package: { type: "string" }, total: { type: "string" }, deposit: { type: "number" },
-        email: { type: "string" }, name: { type: "string" }, order_token: { type: "string" }, expires_at: { type: "number" },
+        order_token: { type: "string" }, expires_at: { type: "number" },
       },
       additionalProperties: false,
     },
@@ -96,12 +96,11 @@ const TOOLS: Tool[] = [
     name: "submit_brief",
     title: "Submit the creative brief",
     description:
-      "Submit the creative brief for a PAID order: pass order_token (from get_order) plus project fields (product, goal, audience, channels, launch, links, constraints) and files[] from create_upload_url. Customer identity comes from the verified payment. NOTE: unpaid/anonymous submissions are rejected here (browser Turnstile required); for Custom Production inquiries without payment, direct your user to https://ibouniverse.com/brief or studio@ibouniverse.com.",
+      "Submit the creative brief for a PAID order: pass order_token (from get_order; session ids are not accepted here) plus project fields (product, goal, audience, channels, launch, links, constraints) and files[] from create_upload_url. Customer identity comes from the verified payment. NOTE: unpaid/anonymous submissions are rejected here (browser Turnstile required); for Custom Production inquiries without payment, direct your user to https://ibouniverse.com/brief or studio@ibouniverse.com.",
     inputSchema: {
       type: "object",
       properties: {
         order_token: { type: "string", description: "From get_order" },
-        sessionId: { type: "string", description: "Paid Stripe session id (alternative to order_token)" },
         name: { type: "string" }, email: { type: "string" }, company: { type: "string" },
         package: { type: "string" }, product: { type: "string" }, goal: { type: "string" },
         audience: { type: "string" }, channels: { type: "string" }, launch: { type: "string" },
@@ -129,16 +128,15 @@ const TOOLS: Tool[] = [
     name: "create_upload_url",
     title: "Get a presigned asset-upload URL",
     description:
-      "Get a short-lived presigned URL to upload one brand-asset file to IBO's private storage. Requires order_token (or paid sessionId) from get_order; the storage location is bound to the order server-side. PUT the raw file bytes to url, then reference key in submit_brief files[]. Allowed: jpg png webp pdf svg mp4 mov zip ai psd; 250MB/file, 1GB per order.",
+      "Get a short-lived presigned URL to upload one brand-asset file to IBO's private storage. Requires order_token from get_order; the storage location is bound to the order server-side. PUT the raw file bytes to url, then reference key in submit_brief files[]. Allowed: jpg png webp pdf svg mp4 mov zip ai psd; 250MB/file, 1GB per order.",
     inputSchema: {
       type: "object",
       properties: {
         filename: { type: "string" },
         size: { type: "number", description: "File size in bytes" },
         order_token: { type: "string", description: "From get_order" },
-        sessionId: { type: "string", description: "Paid Stripe session id (alternative to order_token)" },
       },
-      required: ["filename", "size"],
+      required: ["filename", "size", "order_token"],
       additionalProperties: false,
     },
     outputSchema: {
@@ -167,6 +165,14 @@ function validateArgs(schema: Schema, args: Record<string, unknown>): string | n
     }
     if (spec.enum && !spec.enum.includes(String(value))) {
       return `Argument ${key} must be one of: ${spec.enum.join(", ")}`;
+    }
+    if (jsType === "array" && spec.items && typeof spec.items === "object") {
+      const itemSchema = spec.items as Schema;
+      for (const [i, item] of (value as unknown[]).entries()) {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) return `${key}[${i}] must be an object`;
+        const nested = validateArgs(itemSchema, item as Record<string, unknown>);
+        if (nested) return `${key}[${i}]: ${nested}`;
+      }
     }
   }
   return null;
@@ -242,9 +248,16 @@ export async function handleMcp(request: Request, dispatch: InternalDispatch): P
       const internal = toolToRequest(name, args);
       if (!internal) return rpcError(id, -32602, `Unknown tool: ${name}`);
       const response = await dispatch(internal);
-      const text = await response.text();
+      let text = await response.text();
       let structured: unknown = null;
       try { structured = JSON.parse(text); } catch { /* non-JSON upstream */ }
+      // get_order returns no PII over MCP; identity is injected server-side
+      // into the brief from the verified order token.
+      if (name === "get_order" && structured && typeof structured === "object") {
+        delete (structured as Record<string, unknown>).email;
+        delete (structured as Record<string, unknown>).name;
+        text = JSON.stringify(structured);
+      }
       return rpcResult(id, {
         content: [{ type: "text", text }],
         ...(structured && typeof structured === "object" ? { structuredContent: structured } : {}),
