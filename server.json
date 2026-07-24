@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.41fred/ibo",
   "description": "Commission cinematic AI campaign films and image sets from IBO Studio.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "websiteUrl": "https://ibouniverse.com/agents",
   "repository": {
     "url": "https://github.com/41fred/ibo-mcp",
