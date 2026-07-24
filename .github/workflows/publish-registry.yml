@@ -1,0 +1,23 @@
+name: Publish to MCP Registry
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  id-token: write   # OIDC: proves this repo's identity to the registry
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher
+        run: |
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/').tar.gz" | tar xz mcp-publisher
+      - name: Sync version from tag
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          python3 -c "import json;d=json.load(open('server.json'));d['version']='$V';json.dump(d,open('server.json','w'),indent=2)"
+      - name: Login (OIDC) and publish
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
