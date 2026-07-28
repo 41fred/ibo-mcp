@@ -39,7 +39,7 @@ export async function presignR2Url(options: {
   accountId: string;
   bucket: string;
   key: string;
-  method: "PUT" | "GET" | "HEAD";
+  method: "PUT" | "GET" | "HEAD" | "DELETE";
   expiresSeconds: number;
   /** Extra signed query params, e.g. list-type/prefix or response-content-disposition. */
   extraQuery?: Array<[string, string]>;

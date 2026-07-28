@@ -38,8 +38,12 @@ export const RATE_LIMITS: Array<{ prefix: string; limit: number }> = [
   { prefix: "/api/checkout", limit: 10 },   // creates real Stripe sessions
   { prefix: "/api/brief/upload-url", limit: 30 },
   { prefix: "/api/brief", limit: 6 },       // sends emails
+  { prefix: "/api/inquiry/status", limit: 30 },
+  { prefix: "/api/inquiry", limit: 4 },     // sends confirmation emails
   { prefix: "/api/order", limit: 30 },
   { prefix: "/api/checkout-session", limit: 30 },
+  { prefix: "/api/studio/login", limit: 5 },  // operator password attempts
+  { prefix: "/api/studio", limit: 120 },
   { prefix: "/mcp", limit: 60 },
 ];
 

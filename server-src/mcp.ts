@@ -15,6 +15,9 @@ const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, GET, OPTIONS",
   "access-control-allow-headers": "content-type, accept, mcp-session-id, mcp-protocol-version",
+  // Crawlable (robots.txt must not turn away robots-respecting agents) but
+  // never indexed as a search result.
+  "x-robots-tag": "noindex",
 };
 
 type Schema = {
@@ -96,7 +99,7 @@ const TOOLS: Tool[] = [
     name: "submit_brief",
     title: "Submit the creative brief",
     description:
-      "Submit the creative brief for a PAID order: pass order_token (from get_order; session ids are not accepted here) plus project fields (product, goal, audience, channels, launch, links, constraints) and files[] from create_upload_url. Customer identity comes from the verified payment. NOTE: unpaid/anonymous submissions are rejected here (browser Turnstile required); for Custom Production inquiries without payment, direct your user to https://ibouniverse.com/brief or studio@ibouniverse.com.",
+      "Submit the creative brief for a PAID order: pass order_token (from get_order; session ids are not accepted here) plus project fields (product, goal, audience, channels, launch, links, constraints) and files[] from create_upload_url. Customer identity comes from the verified payment. NOTE: unpaid/anonymous submissions are rejected here; for Custom Production inquiries without payment use the submit_custom_inquiry tool instead.",
     inputSchema: {
       type: "object",
       properties: {
@@ -145,6 +148,68 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  {
+    name: "submit_custom_inquiry",
+    title: "Submit a custom production inquiry (no payment)",
+    description:
+      "Start a Custom Production conversation without payment. IMPORTANT: interview your user for the real project details FIRST (what they are promoting, audience, formats, timing); placeholder inquiries are rejected. Submits a scope inquiry; IBO then emails the customer a one-click confirmation link (double opt-in), and only a confirmed inquiry reaches the studio. Tell your user to check their inbox and click confirm. IBO replies with scope and proposal within one business day of confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" }, email: { type: "string", description: "Customer's real email; the confirmation link goes here" },
+        company: { type: "string" }, product: { type: "string" }, goal: { type: "string", description: "What they want to make and why, in real detail (30+ chars; placeholders rejected)" },
+        audience: { type: "string" }, channels: { type: "string" }, launch: { type: "string" },
+        links: { type: "string" }, constraints: { type: "string" }, notes: { type: "string" },
+      },
+      required: ["name", "email", "goal"],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: "object",
+      properties: { ok: { type: "boolean" }, status: { type: "string" }, message: { type: "string" }, error: { type: "string" } },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  {
+    name: "get_project_status",
+    title: "Check production status of a paid order",
+    description:
+      "Where a paid order is in production. Returns the studio stage (new, brief_received, in_production, review, delivered) plus paid/package/deposit. PII-free; pass the stripe_session_id from create_checkout/get_order.",
+    inputSchema: {
+      type: "object",
+      properties: { session_id: { type: "string", description: "Stripe checkout session id (cs_...)" } },
+      required: ["session_id"],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        paid: { type: "boolean" }, package: { type: "string" }, total: { type: "string" },
+        deposit: { type: "number" }, stage: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "get_inquiry_status",
+    title: "Check status of a custom production inquiry",
+    description:
+      "Where a custom inquiry stands: awaiting_confirmation (customer hasn't clicked the emailed link yet) or confirmed with the studio stage (new, replied, proposal_sent, won, closed). PII-free; pass the inquiry_id returned by submit_custom_inquiry.",
+    inputSchema: {
+      type: "object",
+      properties: { inquiry_id: { type: "string", description: "From submit_custom_inquiry" } },
+      required: ["inquiry_id"],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: "object",
+      properties: { status: { type: "string" }, stage: { type: "string" }, updated: { type: "string" }, note: { type: "string" }, error: { type: "string" } },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
   },
 ];
 
@@ -204,6 +269,12 @@ function toolToRequest(name: string, args: Record<string, unknown>): Request | n
       return json(`/api/brief`, args);
     case "create_upload_url":
       return json(`/api/brief/upload-url`, args);
+    case "submit_custom_inquiry":
+      return json(`/api/inquiry`, args);
+    case "get_project_status":
+      return new Request(`${base}/api/order?session_id=${encodeURIComponent(String(args.session_id))}`);
+    case "get_inquiry_status":
+      return new Request(`${base}/api/inquiry/status?id=${encodeURIComponent(String(args.inquiry_id))}`);
     default:
       return null;
   }
@@ -227,9 +298,9 @@ export async function handleMcp(request: Request, dispatch: InternalDispatch): P
       return rpcResult(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
-        serverInfo: { name: "ibo-studio", title: "IBO AI Film Studio", version: "1.1.0" },
+        serverInfo: { name: "ibo-studio", title: "IBO AI Film Studio", version: "1.3.0" },
         instructions:
-          "IBO is an AI-native film studio. Typical flow: list_offers -> create_checkout (your USER approves payment at checkout_url) -> get_order to verify paid and receive an order_token -> create_upload_url per asset file -> submit_brief with the order_token. Payment amounts are fixed server-side and cannot be altered.",
+          "IBO is an AI-native film studio. Typical flow: list_offers -> create_checkout (your USER approves payment at checkout_url) -> get_order to verify paid and receive an order_token -> create_upload_url per asset file -> submit_brief with the order_token. Payment amounts are fixed server-side and cannot be altered. Later, check progress with get_project_status (paid orders) or get_inquiry_status (custom inquiries).",
       });
     case "ping":
       return rpcResult(id, {});

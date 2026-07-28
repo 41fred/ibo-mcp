@@ -23,6 +23,9 @@ https://ibouniverse.com/mcp
 | `get_order` | Verifies payment server-side after checkout |
 | `create_upload_url` | Presigned upload for brand assets (paid orders) |
 | `submit_brief` | Files the creative brief against the paid order |
+| `submit_custom_inquiry` | Custom production inquiry, no payment; double opt-in via email confirmation |
+| `get_project_status` | PII-free production stage of a paid order (new to delivered) |
+| `get_inquiry_status` | PII-free inquiry status: awaiting confirmation or studio stage |
 
 ## Payment safety
 

@@ -277,27 +277,26 @@ test("brief submit: JSON path validates file keys and accepts clean submission",
   assert.equal(data.ok, true);
 });
 
-test("brief submit: Turnstile configured -> tokenless anonymous submission is 403 (no siteverify call)", async () => {
+test("brief submit: tokenless anonymous falls back to double-opt-in inquiry", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `ts-${process.pid}-${Date.now()}`);
+  workerUrl.searchParams.set("test", `tf-${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
   const env = {
     ASSETS: { fetch: async () => new Response("x", { status: 404 }) },
-    RESEND_API_KEY: "re_test_dummy",
-    TURNSTILE_SECRET: "dummy",
+    RESEND_API_KEY: "re_dummy", TURNSTILE_SECRET: "ts_dummy",
+    ORDER_TOKEN_SECRET: "ot", R2_ACCESS_KEY_ID: "k", R2_SECRET_ACCESS_KEY: "s",
   };
   const ctx = { waitUntil() {}, passThroughOnException() {} };
-  // No cf-turnstile-response token: the worker must short-circuit to 403
-  // before ever calling siteverify (offline-safe, and saves a round-trip for
-  // tokenless spam in production).
-  const response = await worker.fetch(
-    new Request("http://localhost/api/brief", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Test", email: "t@example.com" }),
-    }), env, ctx);
-  assert.equal(response.status, 403);
-  const data = await response.json();
-  assert.match(data.error, /verification failed/i);
+  const response = await worker.fetch(new Request("http://localhost/api/brief", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Agent User", email: "a@example.com", goal: "custom idea" }),
+  }), env, ctx);
+  // Offline, the R2 park attempt fails with 502; the point is that the request
+  // routed into the inquiry flow rather than a Turnstile 403. Live, this path
+  // returns {ok:true, status:"confirmation_sent"}.
+  const body = await response.json();
+  assert.notEqual(response.status, 403);
+  assert.ok(!String(body.error ?? "").includes("challenge"), "no Turnstile rejection for tokenless agents");
 });
 
 test("agent interface: /api/offers feed and JSON checkout errors", async () => {
@@ -355,7 +354,7 @@ test("mcp server: initialize, tools list, tool dispatch through shared routes", 
 
   const list = await (await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json();
   assert.deepEqual(list.result.tools.map((t) => t.name),
-    ["list_offers", "create_checkout", "get_order", "submit_brief", "create_upload_url"]);
+    ["list_offers", "create_checkout", "get_order", "submit_brief", "create_upload_url", "submit_custom_inquiry", "get_project_status", "get_inquiry_status"]);
 
   const offers = await (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_offers", arguments: {} } })).json();
   assert.equal(offers.result.isError, false);
@@ -449,6 +448,22 @@ test("mcp: structuredContent keys conform to each outputSchema", async () => {
   const bad = (await (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "submit_brief", arguments: { order_token: "ibo_x.y", files: [{ key: "k", name: "n", size: 1, sneaky: true }] } } })).json()).result;
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /files\[0\]/);
+});
+
+test("custom inquiry: validates input; bad confirm token rejected", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `iq-${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const env = { ASSETS: { fetch: async () => new Response("x", { status: 404 }) },
+    RESEND_API_KEY: "re_dummy", ORDER_TOKEN_SECRET: "s", R2_ACCESS_KEY_ID: "k", R2_SECRET_ACCESS_KEY: "s2" };
+  const ctx = { waitUntil() {}, passThroughOnException() {} };
+  const bad = await worker.fetch(new Request("http://localhost/api/inquiry", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "X", email: "not-an-email" }),
+  }), env, ctx);
+  assert.equal(bad.status, 400);
+  const confirm = await worker.fetch(new Request("http://localhost/api/inquiry/confirm?token=abc.def"), env, ctx);
+  assert.equal(confirm.status, 400);
 });
 
 test("thank-you page: renders and is noindexed", async () => {
