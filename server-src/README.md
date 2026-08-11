@@ -4,6 +4,10 @@ Published copies of the MCP/agent-interface modules and test suite from the
 private site repo, for code-level audit. The full Worker also contains the
 checkout/webhook/brief handlers these dispatch into.
 
-- Source commit: `848d346` (repo 41fred/ibo-website, private)
-- Files: mcp.ts (protocol layer), rate-limit.ts, r2-presign.ts, tests.mjs (33 tests)
-- Refreshed manually on protocol-relevant changes.
+- Source commit: `41fred/ibo-website@f64b8dcc3289c366408f616f23c66b1577d616bc`
+- Files: `mcp.ts` (protocol layer), `rate-limit.ts`, `r2-presign.ts`, and the
+  relevant audit test copy in `tests.mjs`.
+- Protocol changes follow the IBO Release, Registry Sync, and Rollback SOP.
+  `node scripts/validate-release.mjs` must pass before tagging a release; pass
+  the local website checkout as an optional argument to require byte-for-byte
+  equality with its production `worker/mcp.ts`.

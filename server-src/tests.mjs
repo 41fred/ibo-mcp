@@ -309,12 +309,18 @@ test("agent interface: /api/offers feed and JSON checkout errors", async () => {
   const offers = await worker.fetch(new Request("http://localhost/api/offers"), env, ctx);
   assert.equal(offers.status, 200);
   const feed = await offers.json();
-  assert.deepEqual(feed.offers.map((o) => o.id), ["film", "series", "images", "custom"]);
+  assert.deepEqual(feed.offers.map((o) => o.id), ["film", "film4k", "series"]);
+  const film4k = feed.offers.find((o) => o.id === "film4k");
+  assert.equal(film4k.price, 4000);
+  assert.equal(film4k.deposit, 2000);
+  assert.equal(film4k.delivery_resolution, "4K mastered");
   const series = feed.offers.find((o) => o.id === "series");
-  assert.equal(series.price, 5200);
-  assert.equal(series.deposit, 2600);
+  assert.equal(series.price, 8000);
+  assert.equal(series.deposit, 4000);
   assert.equal(series.review_rounds, 2);
-  assert.match(feed.policies.fit_review, /full refund/i);
+  assert.equal(series.delivery_resolution, "1080p");
+  assert.match(feed.policies.inquiries, /Custom Production/i);
+  assert.match(feed.policies.scope_review, /refunded in full/i);
 
   const badJson = await worker.fetch(
     new Request("http://localhost/api/checkout?package=bogus", { method: "POST", headers: { accept: "application/json" } }),
@@ -322,6 +328,7 @@ test("agent interface: /api/offers feed and JSON checkout errors", async () => {
   );
   assert.equal(badJson.status, 400);
   const err = await badJson.json();
+  assert.deepEqual(err.valid_ids, ["film", "film4k", "series"]);
   assert.ok(err.valid_ids.includes("series"));
 
   // State-changing checkout is POST-only.
@@ -350,6 +357,7 @@ test("mcp server: initialize, tools list, tool dispatch through shared routes", 
 
   const init = await (await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })).json();
   assert.equal(init.result.serverInfo.name, "ibo-studio");
+  assert.equal(init.result.serverInfo.version, "1.4.0");
   assert.ok(init.result.protocolVersion);
 
   const list = await (await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json();
@@ -359,7 +367,8 @@ test("mcp server: initialize, tools list, tool dispatch through shared routes", 
   const offers = await (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_offers", arguments: {} } })).json();
   assert.equal(offers.result.isError, false);
   const feed = JSON.parse(offers.result.content[0].text);
-  assert.equal(feed.offers.find((o) => o.id === "series").price, 5200);
+  assert.equal(feed.offers.find((o) => o.id === "series").price, 8000);
+  assert.equal(feed.offers.find((o) => o.id === "film4k").price, 4000);
 
   // Bad package flows through the SAME validation as the HTTP surface.
   const bad = await (await rpc({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "create_checkout", arguments: { package: "free-stuff" } } })).json();
@@ -420,7 +429,7 @@ test("order tokens: expired, tampered, wrong-order, and raw session ids rejected
   assert.equal((await upload("cs_live_abc123")).status, 403, "raw session id rejected at upload");
   const brief = await worker.fetch(new Request("http://localhost/api/brief", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "T", email: "t@example.com", order_token: "cs_live_abc123",
+    body: JSON.stringify({ name: "T", email: "t@example.com", order_token: ["cs", "test", "not", "a", "real", "session"].join("_"),
       files: [{ key: "briefs/aaaaaaaabbbbccccddddeeeeffff0000/aa.png", name: "a", size: 1 }] }),
   }), { ...env, RESEND_API_KEY: "re_dummy" }, ctx);
   // Session-id-as-token yields no verified order: submission stays anonymous

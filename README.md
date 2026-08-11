@@ -1,6 +1,6 @@
 # IBO Studio MCP Server
 
-Commission cinematic campaign films and image sets from [IBO](https://ibouniverse.com), an AI-native film studio, directly from your AI assistant.
+Commission cinematic campaign films from [IBO](https://ibouniverse.com), an AI-native film studio, directly from your AI assistant. Non-standard scopes, including a 4K Campaign Series and image work, route through Custom Production before checkout.
 
 ## Connect
 
@@ -18,7 +18,7 @@ https://ibouniverse.com/mcp
 
 | Tool | What it does |
 |---|---|
-| `list_offers` | Packages, prices, 50% deposits, deliverables, refund/fit policy |
+| `list_offers` | Packages, prices, 50% deposits, deliverables, resolution and scope/refund policy |
 | `create_checkout` | Creates a Stripe Checkout for the deposit; your user approves payment |
 | `get_order` | Verifies payment server-side after checkout |
 | `create_upload_url` | Presigned upload for brand assets (paid orders) |
@@ -39,4 +39,4 @@ Everything is also available as documented JSON endpoints: [llms.txt](https://ib
 
 ## About
 
-IBO creates cinematic campaign films and images for brands, from concept and storyboard through AI production, editing, sound, and delivery. Human-directed, AI-produced. [ibouniverse.com](https://ibouniverse.com)
+IBO creates cinematic campaign films for businesses and brands, from concept and storyboard through AI production, editing, sound, and delivery. Fixed packages are Campaign Film, 4K Campaign Film, and Campaign Series; broader work is custom-scoped. Human-directed, AI-produced. [ibouniverse.com](https://ibouniverse.com)
