@@ -357,7 +357,7 @@ test("mcp server: initialize, tools list, tool dispatch through shared routes", 
 
   const init = await (await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })).json();
   assert.equal(init.result.serverInfo.name, "ibo-studio");
-  assert.equal(init.result.serverInfo.version, "1.4.0");
+  assert.equal(init.result.serverInfo.version, "1.4.1");
   assert.ok(init.result.protocolVersion);
 
   const list = await (await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json();
