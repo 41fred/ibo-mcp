@@ -11,6 +11,9 @@
 
 const PROTOCOL_VERSION = "2025-06-18";
 
+/** Single source of truth for the server version (also in the server card). */
+export const MCP_SERVER_VERSION = "1.4.0";
+
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, GET, OPTIONS",
@@ -41,7 +44,7 @@ const TOOLS: Tool[] = [
     name: "list_offers",
     title: "List IBO production packages",
     description:
-      "IBO's production packages: stable ids, prices, 50% deposits, deliverables, review rounds, and the refund/fit policy. Call this first.",
+      "IBO's production packages: stable ids, prices, 50% deposits, deliverables, review rounds, and the scope/refund policy. Call this first.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
@@ -58,7 +61,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        package: { type: "string", enum: ["film", "series", "images"], description: "Offer id from list_offers" },
+        package: { type: "string", enum: ["film", "film4k", "series"], description: "Offer id from list_offers" },
         client_request_id: { type: "string", description: "Stable id you generate; makes creation idempotent on retry" },
       },
       required: ["package", "client_request_id"],
@@ -99,14 +102,14 @@ const TOOLS: Tool[] = [
     name: "submit_brief",
     title: "Submit the creative brief",
     description:
-      "Submit the creative brief for a PAID order: pass order_token (from get_order; session ids are not accepted here) plus project fields (product, goal, audience, channels, launch, links, constraints) and files[] from create_upload_url. Customer identity comes from the verified payment. NOTE: unpaid/anonymous submissions are rejected here; for Custom Production inquiries without payment use the submit_custom_inquiry tool instead.",
+      "Submit the creative brief for a PAID order: pass order_token (from get_order; session ids are not accepted here) plus project fields (product, goal, audience, channels, resolution, launch, links, constraints) and files[] from create_upload_url. Delivery resolution must be selected before creative kickoff. Customer identity comes from the verified payment. NOTE: unpaid/anonymous submissions are rejected here; for Custom Production inquiries without payment use the submit_custom_inquiry tool instead.",
     inputSchema: {
       type: "object",
       properties: {
         order_token: { type: "string", description: "From get_order" },
         name: { type: "string" }, email: { type: "string" }, company: { type: "string" },
         package: { type: "string" }, product: { type: "string" }, goal: { type: "string" },
-        audience: { type: "string" }, channels: { type: "string" }, launch: { type: "string" },
+        audience: { type: "string" }, channels: { type: "string" }, resolution: { type: "string", description: "Final master resolution selected before creative kickoff" }, launch: { type: "string" },
         links: { type: "string" }, constraints: { type: "string" },
         files: {
           type: "array",
@@ -153,13 +156,13 @@ const TOOLS: Tool[] = [
     name: "submit_custom_inquiry",
     title: "Submit a custom production inquiry (no payment)",
     description:
-      "Start a Custom Production conversation without payment. IMPORTANT: interview your user for the real project details FIRST (what they are promoting, audience, formats, timing); placeholder inquiries are rejected. Submits a scope inquiry; IBO then emails the customer a one-click confirmation link (double opt-in), and only a confirmed inquiry reaches the studio. Tell your user to check their inbox and click confirm. IBO replies with scope and proposal within one business day of confirmation.",
+      "Start a Custom Production conversation without payment. IMPORTANT: interview your user for the real project details FIRST (what they are promoting, audience, formats, delivery resolution, timing); placeholder inquiries are rejected. A 4K Campaign Series must use this route before checkout. Submits a scope inquiry; IBO then emails the customer a one-click confirmation link (double opt-in), and only a confirmed inquiry reaches the studio. Tell your user to check their inbox and click confirm. IBO replies with scope and proposal within one business day of confirmation.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string" }, email: { type: "string", description: "Customer's real email; the confirmation link goes here" },
         company: { type: "string" }, product: { type: "string" }, goal: { type: "string", description: "What they want to make and why, in real detail (30+ chars; placeholders rejected)" },
-        audience: { type: "string" }, channels: { type: "string" }, launch: { type: "string" },
+        audience: { type: "string" }, channels: { type: "string" }, resolution: { type: "string", description: "Required production target: 1080p, 4K mastered, or not applicable for still images" }, launch: { type: "string" },
         links: { type: "string" }, constraints: { type: "string" }, notes: { type: "string" },
       },
       required: ["name", "email", "goal"],
@@ -298,7 +301,7 @@ export async function handleMcp(request: Request, dispatch: InternalDispatch): P
       return rpcResult(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
-        serverInfo: { name: "ibo-studio", title: "IBO AI Film Studio", version: "1.3.0" },
+        serverInfo: { name: "ibo-studio", title: "IBO AI Film Studio", version: MCP_SERVER_VERSION },
         instructions:
           "IBO is an AI-native film studio. Typical flow: list_offers -> create_checkout (your USER approves payment at checkout_url) -> get_order to verify paid and receive an order_token -> create_upload_url per asset file -> submit_brief with the order_token. Payment amounts are fixed server-side and cannot be altered. Later, check progress with get_project_status (paid orders) or get_inquiry_status (custom inquiries).",
       });
