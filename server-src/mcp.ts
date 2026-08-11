@@ -12,7 +12,7 @@
 const PROTOCOL_VERSION = "2025-06-18";
 
 /** Single source of truth for the server version (also in the server card). */
-export const MCP_SERVER_VERSION = "1.4.0";
+export const MCP_SERVER_VERSION = "1.4.1";
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
